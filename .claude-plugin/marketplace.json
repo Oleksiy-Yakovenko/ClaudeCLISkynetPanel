@@ -1,0 +1,5 @@
+{
+  "name": "skynet-local",
+  "owner": { "name": "waker" },
+  "plugins": [{ "name": "skynet-panel", "source": "./" }]
+}
