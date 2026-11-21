@@ -30,6 +30,13 @@ function redShade(percent: number): string {
   return rgb(Math.round(125 + 70 * t), Math.round(34 + 8 * t), Math.round(44 + 6 * t))
 }
 
+// Bar colors by usage: < 70 green, < 90 yellow, otherwise red (unchanged).
+function barColors(percent: number): { fill: string; empty: string } {
+  if (percent < 70) return { fill: rgb(60, 140, 80), empty: rgb(24, 50, 32) }
+  if (percent < 90) return { fill: rgb(190, 160, 50), empty: rgb(58, 50, 22) }
+  return { fill: redShade(percent), empty: RED_EMPTY }
+}
+
 function until(iso: string | undefined, now: number): string {
   if (!iso) return ''
   const mins = Math.max(0, Math.round((Date.parse(iso) - now) / 60000))
@@ -221,14 +228,15 @@ export const register: Register = on => {
         {m.limits.length === 0 && <Text color={GREY}>No limit data yet</Text>}
         {m.limits.map(l => {
           const b = bar(l.percentUsed, 28)
+          const c = barColors(l.percentUsed)
           return (
             <Box flexDirection="column">
               <Text color={GREY} wrap="truncate-end">
                 {LABELS[l.kind] ?? l.kind} {l.percentUsed}% {until(l.resetsAt, now) && `· ${until(l.resetsAt, now)}`}
               </Text>
               <Text>
-                <Text color={redShade(l.percentUsed)}>{b.full}</Text>
-                <Text color={RED_EMPTY}>{b.rest}</Text>
+                <Text color={c.fill}>{b.full}</Text>
+                <Text color={c.empty}>{b.rest}</Text>
               </Text>
             </Box>
           )
@@ -237,8 +245,8 @@ export const register: Register = on => {
           <Box flexDirection="column">
             <Text color={GREY}>Context {m.contextPercent}%</Text>
             <Text>
-              <Text color={redShade(m.contextPercent)}>{bar(m.contextPercent, 28).full}</Text>
-              <Text color={RED_EMPTY}>{bar(m.contextPercent, 28).rest}</Text>
+              <Text color={barColors(m.contextPercent).fill}>{bar(m.contextPercent, 28).full}</Text>
+              <Text color={barColors(m.contextPercent).empty}>{bar(m.contextPercent, 28).rest}</Text>
             </Text>
           </Box>
         )}
