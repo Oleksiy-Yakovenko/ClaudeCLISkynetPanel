@@ -1,7 +1,23 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-import type { AnsiDoc, Meter } from '../types'
+import type { Activity, AnsiDoc, Meter } from '../types'
+
+const activity = atom(
+  { plugin: 'skynet-panel', key: 'activity' } as const,
+  { agents: 0, frame: 0 } as Activity,
+  { shape: 'activity-1' },
+)
+
+// The one animation/poll interval; replaced on every session.start.
+let ticker: { cancel: () => void } | null = null
+
+const SCAN_WIDTH = 5
+// Dot position bounces 0..4..0 (period 8).
+function dotPos(frame: number): number {
+  const p = ((frame % (2 * (SCAN_WIDTH - 1))) + 2 * (SCAN_WIDTH - 1)) % (2 * (SCAN_WIDTH - 1))
+  return p < SCAN_WIDTH ? p : 2 * (SCAN_WIDTH - 1) - p
+}
 
 const meter = atom(
   { plugin: 'skynet-panel', key: 'meter' } as const,
@@ -160,6 +176,28 @@ export const register: Register = on => {
       // No logo: the pane still shows the usage block.
     }
     void $.ui.open({ id: PANE, title: 'Skynet', columns: 30, placement: 'widget' })
+
+    // One interval: counts active agents and animates the idle scanner.
+    ticker?.cancel()
+    ticker = $.clock.every(350, async () => {
+      let n = 0
+      try {
+        n = (await $.agent.list()).filter(a => a.status === 'running' || a.status === 'pending').length
+      } catch {
+        n = 0
+      }
+      try {
+        await update($, activity, a => ({ agents: n, frame: (a.frame + 1) % 8 }))
+      } catch {
+        // Skip this tick; the next one retries.
+      }
+    })
+    return next(e)
+  })
+
+  on('session.end', async (_$, e, next) => {
+    ticker?.cancel()
+    ticker = null
     return next(e)
   })
 
@@ -207,6 +245,9 @@ export const register: Register = on => {
     const { Box, Text } = $.ui.resolve(e)
     const d = await read($, doc)
     const m = await read($, meter)
+    const act = await read($, activity)
+    const pos = dotPos(act.frame)
+    const scan = ' '.repeat(pos) + '.' + ' '.repeat(SCAN_WIDTH - 1 - pos)
     const now = await $.clock.now()
     let model = ''
     try {
@@ -250,6 +291,13 @@ export const register: Register = on => {
             </Text>
           </Box>
         )}
+        <Box marginTop={1}>
+          {act.agents > 0 ? (
+            <Text color={GREY} wrap="truncate-end">{`${act.agents} terminators active ${' '.repeat(pos)}`}<Text color={redShade(100)}>⌖</Text>{' '.repeat(SCAN_WIDTH - 1 - pos)}</Text>
+          ) : (
+            <Text color={GREY} wrap="truncate-end">{`searching for targets ${scan}`}</Text>
+          )}
+        </Box>
       </Box>
     )
 
@@ -263,7 +311,7 @@ export const register: Register = on => {
     }
 
     // Rows left for the graphic after the usage block.
-    const usageRows = 1 + 1 + Math.max(1, m.limits.length) * 2 + (m.contextPercent !== null ? 2 : 0) + (model !== '' ? 2 : 0)
+    const usageRows = 1 + 1 + Math.max(1, m.limits.length) * 2 + (m.contextPercent !== null ? 2 : 0) + (model !== '' ? 2 : 0) + 2
     const room = Math.max(1, (e.viewport?.rows ?? 24) - 5 - usageRows)
     const shown = parseLines(d.lines.slice(0, d.top + room)).slice(d.top)
 
