@@ -201,9 +201,22 @@ export const register: Register = on => {
     const d = await read($, doc)
     const m = await read($, meter)
     const now = await $.clock.now()
+    let model = ''
+    try {
+      model = (await $.session.model()) || ''
+    } catch {
+      // No model line if it cannot be resolved.
+    }
 
     const usage = (
       <Box flexDirection="column" marginTop={1}>
+        {model !== '' && (
+          <Box marginBottom={1}>
+            <Text color={GREY} wrap="truncate-end">
+              {model} <Text color={redShade(100)}>armed</Text>
+            </Text>
+          </Box>
+        )}
         <Text color={GREY}>Usage limits</Text>
         {m.limits.length === 0 && <Text color={GREY}>No limit data yet</Text>}
         {m.limits.map(l => {
@@ -242,7 +255,7 @@ export const register: Register = on => {
     }
 
     // Rows left for the graphic after the usage block.
-    const usageRows = 1 + 1 + Math.max(1, m.limits.length) * 2 + (m.contextPercent !== null ? 2 : 0)
+    const usageRows = 1 + 1 + Math.max(1, m.limits.length) * 2 + (m.contextPercent !== null ? 2 : 0) + (model !== '' ? 2 : 0)
     const room = Math.max(1, (e.viewport?.rows ?? 24) - 5 - usageRows)
     const shown = parseLines(d.lines.slice(0, d.top + room)).slice(d.top)
 
