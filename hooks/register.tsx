@@ -161,6 +161,24 @@ function parseLines(lines: string[]): Span[][] {
   })
 }
 
+type Ctx = Parameters<typeof update>[0]
+
+// Loads the bundled logo into the doc atom. Called from session.start and,
+// as a fallback, from ui.render, because session.start does not run again on
+// a resumed session or after /reload-plugins.
+async function loadLogo($: Ctx): Promise<AnsiDoc | null> {
+  try {
+    const text = await $.fs.read(`${$.plugin.root}/${LOGO}`)
+    const lines = text.replace(/\r\n?/g, '\n').replace(/\n$/, '').split('\n')
+    const loaded: AnsiDoc = { path: LOGO, lines, top: 0 }
+    await update($, doc, () => loaded)
+    return loaded
+  } catch {
+    // No logo: the pane still shows the usage block.
+    return null
+  }
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -168,13 +186,7 @@ export const register: Register = on => {
       description: 'Skynet panel: /ansi <file> shows an ANSI file, /ansi +N or -N scrolls',
     })
     // Show the bundled logo in the pane at the start of every session.
-    try {
-      const text = await $.fs.read(`${$.plugin.root}/${LOGO}`)
-      const lines = text.replace(/\r\n?/g, '\n').replace(/\n$/, '').split('\n')
-      await update($, doc, () => ({ path: LOGO, lines, top: 0 }))
-    } catch {
-      // No logo: the pane still shows the usage block.
-    }
+    await loadLogo($)
     void $.ui.open({ id: PANE, title: 'Skynet', columns: 30, placement: 'widget' })
 
     // One interval: counts active agents and animates the idle scanner.
@@ -243,7 +255,7 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text } = $.ui.resolve(e)
-    const d = await read($, doc)
+    const d = (await read($, doc)) ?? (await loadLogo($))
     const m = await read($, meter)
     const act = await read($, activity)
     const pos = dotPos(act.frame)
