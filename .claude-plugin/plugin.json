@@ -1,6 +1,6 @@
 {
   "name": "skynet-panel",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Skynet ANSI logo panel with usage limits; /ansi <file> shows any ANSI file",
   "license": "UNLICENSED",
   "types": "./types/index.d.ts"

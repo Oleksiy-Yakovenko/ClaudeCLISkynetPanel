@@ -167,16 +167,41 @@ type Ctx = Parameters<typeof update>[0]
 // as a fallback, from ui.render, because session.start does not run again on
 // a resumed session or after /reload-plugins.
 async function loadLogo($: Ctx): Promise<AnsiDoc | null> {
+  let loaded: AnsiDoc
   try {
     const text = await $.fs.read(`${$.plugin.root}/${LOGO}`)
     const lines = text.replace(/\r\n?/g, '\n').replace(/\n$/, '').split('\n')
-    const loaded: AnsiDoc = { path: LOGO, lines, top: 0 }
-    await update($, doc, () => loaded)
-    return loaded
+    loaded = { path: LOGO, lines, top: 0 }
   } catch {
     // No logo: the pane still shows the usage block.
     return null
   }
+  try {
+    await update($, doc, () => loaded)
+  } catch {
+    // Persisting failed (e.g. during render); still show what we read.
+  }
+  return loaded
+}
+
+// Starts the animation/poll interval if it is not running. Also called from
+// ui.render, because after /clear session.end can cancel the ticker that the
+// new session.start just created.
+function ensureTicker($: Ctx): void {
+  if (ticker) return
+  ticker = $.clock.every(350, async () => {
+    let n = 0
+    try {
+      n = (await $.agent.list()).filter(a => a.status === 'running' || a.status === 'pending').length
+    } catch {
+      n = 0
+    }
+    try {
+      await update($, activity, a => ({ agents: n, frame: (a.frame + 1) % 8 }))
+    } catch {
+      // Skip this tick; the next one retries.
+    }
+  })
 }
 
 export const register: Register = on => {
@@ -191,19 +216,8 @@ export const register: Register = on => {
 
     // One interval: counts active agents and animates the idle scanner.
     ticker?.cancel()
-    ticker = $.clock.every(350, async () => {
-      let n = 0
-      try {
-        n = (await $.agent.list()).filter(a => a.status === 'running' || a.status === 'pending').length
-      } catch {
-        n = 0
-      }
-      try {
-        await update($, activity, a => ({ agents: n, frame: (a.frame + 1) % 8 }))
-      } catch {
-        // Skip this tick; the next one retries.
-      }
-    })
+    ticker = null
+    ensureTicker($)
     return next(e)
   })
 
@@ -255,6 +269,7 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text } = $.ui.resolve(e)
+    ensureTicker($)
     const d = (await read($, doc)) ?? (await loadLogo($))
     const m = await read($, meter)
     const act = await read($, activity)
